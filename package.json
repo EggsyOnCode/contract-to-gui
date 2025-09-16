@@ -1,0 +1,33 @@
+{
+  "name": "contract-gui",
+  "version": "1.0.0",
+  "description": "Modular dev tool for smart contract interaction",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "smart-contract",
+    "ethereum",
+    "web3",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.15.0",
+  "dependencies": {
+    "@armchain-ethersv6/ethers": "^6.13.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vite-plugin-node-polyfills": "^0.24.0"
+  }
+}
