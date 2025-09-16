@@ -1,53 +1,65 @@
 import { ContractABI, CompilerSettings } from '../types';
-
-// Global variable to store the loaded solc instance
-let solcInstance: any = null;
-
-const loadSolcFromCDN = async (version: string): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    // Check if already loaded
-    if (solcInstance && solcInstance.version() === version) {
-      resolve(solcInstance);
-      return;
-    }
-
-    // Create script element to load solc from CDN
-    const script = document.createElement('script');
-    script.src = `https://binaries.soliditylang.org/bin/soljson-${version}.js`;
-    script.async = true;
-    
-    script.onload = () => {
-      try {
-        // @ts-ignore - solc will be available globally after script loads
-        const Solc = (window as any).Module;
-        if (Solc) {
-          solcInstance = Solc;
-          resolve(Solc);
-        } else {
-          reject(new Error('Failed to initialize solc'));
-        }
-      } catch (error) {
-        reject(new Error(`Failed to initialize solc: ${error}`));
-      }
-    };
-    
-    script.onerror = () => {
-      reject(new Error(`Failed to load solc version ${version} from CDN`));
-    };
-    
-    document.head.appendChild(script);
-  });
-};
+import { fetchAndLoadSolc } from 'web-solc';
 
 export class ContractCompiler {
+  private solc: any | null = null;
+  private isLoading: boolean = false;
+  private loadPromise: Promise<void> | null = null;
+
+  constructor() {
+    // Don't load immediately, wait for first compilation
+  }
+
+  private async loadSolc(version: string): Promise<void> {
+    // Return existing promise if already loading
+    if (this.loadPromise) {
+      return this.loadPromise;
+    }
+
+    this.loadPromise = (async () => {
+      if (this.solc && !this.isLoading) {
+        return;
+      }
+
+      if (this.isLoading) {
+        // Wait for current loading to complete
+        while (this.isLoading) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return;
+      }
+
+      this.isLoading = true;
+      
+      try {
+        console.log(`Loading Solidity compiler version: ${version}`);
+        this.solc = await fetchAndLoadSolc(version);
+        console.log('Solidity compiler loaded successfully');
+      } catch (error) {
+        console.error('Failed to load Solidity compiler:', error);
+        throw error;
+      } finally {
+        this.isLoading = false;
+      }
+    })();
+
+    return this.loadPromise;
+  }
+
   async compileContract(
     sourceCode: string,
     contractName: string,
     settings: CompilerSettings
   ): Promise<ContractABI> {
     try {
-      const solc = await loadSolcFromCDN(settings.solcVersion);
+      console.log('Loading Solidity compiler...');
+      await this.loadSolc(settings.solcVersion);
+      console.log('Compiler loaded, compiling...');
       
+      if (!this.solc) {
+        throw new Error('Compiler not loaded');
+      }
+
       const input = {
         language: 'Solidity',
         sources: {
@@ -69,9 +81,8 @@ export class ContractCompiler {
         },
       };
 
-      const output = JSON.parse(
-        solc.compile(JSON.stringify(input))
-      );
+      const output = await this.solc.compile(input);
+      console.log('Compilation output:', output);
 
       if (output.errors) {
         const errors = output.errors.filter((error: any) => error.severity === 'error');
@@ -85,13 +96,15 @@ export class ContractCompiler {
         throw new Error(`Contract ${contractName} not found in compilation output`);
       }
 
+      console.log('Compilation successful!');
       return {
         abi: contract.abi,
         bytecode: contract.evm.bytecode.object,
         contractName,
       };
     } catch (error) {
-      throw new Error(`Compilation error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Compilation error:', error);
+      throw new Error(`Compilation failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your Solidity code and try again.`);
     }
   }
 
@@ -146,5 +159,13 @@ export class ContractCompiler {
       'homestead',
       'frontier',
     ];
+  }
+
+  // Clean up resources when done
+  cleanup(): void {
+    if (this.solc) {
+      this.solc.stopWorker();
+      this.solc = null;
+    }
   }
 }

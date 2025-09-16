@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { ContractCompiler } from '../utils/compiler';
 import { ContractInteraction } from '../utils/contractInteraction';
 import { ContractABI, CompilerSettings, ContractCallResult } from '../types';
@@ -10,7 +10,7 @@ export const useContract = () => {
   const [contractInteraction, setContractInteraction] = useState<ContractInteraction | null>(null);
   const [compiler] = useState(() => new ContractCompiler());
 
-  const compileContract = async (
+  const compileContract = useCallback(async (
     sourceCode: string,
     contractName: string,
     settings: CompilerSettings
@@ -28,9 +28,9 @@ export const useContract = () => {
     } finally {
       setIsCompiling(false);
     }
-  };
+  }, [compiler]);
 
-  const deployContract = async (constructorArgs: any[] = []): Promise<ContractCallResult> => {
+  const deployContract = useCallback(async (constructorArgs: any[] = []): Promise<ContractCallResult> => {
     if (!contractABI || !contractInteraction) {
       return {
         success: false,
@@ -39,9 +39,9 @@ export const useContract = () => {
     }
 
     return await contractInteraction.deployContract(contractABI, constructorArgs);
-  };
+  }, [contractABI, contractInteraction]);
 
-  const callFunction = async (
+  const callFunction = useCallback(async (
     functionName: string,
     args: any[] = [],
     value?: string
@@ -54,21 +54,21 @@ export const useContract = () => {
     }
 
     return await contractInteraction.callFunction(functionName, args, value);
-  };
+  }, [contractInteraction]);
 
-  const setContractAddress = (address: string) => {
+  const setContractAddress = useCallback((address: string) => {
     if (contractABI && contractInteraction) {
       contractInteraction.setContractAddress(address, contractABI);
     }
-  };
+  }, [contractABI, contractInteraction]);
 
-  const initializeContractInteraction = (provider: any, signer: any) => {
+  const initializeContractInteraction = useCallback((provider: any, signer: any) => {
     const interaction = new ContractInteraction(provider, signer);
     setContractInteraction(interaction);
-  };
+  }, []);
 
-  const getAvailableSolcVersions = () => compiler.getAvailableSolcVersions();
-  const getAvailableEVMVersions = () => compiler.getAvailableEVMVersions();
+  const getAvailableSolcVersions = useCallback(() => compiler.getAvailableSolcVersions(), [compiler]);
+  const getAvailableEVMVersions = useCallback(() => compiler.getAvailableEVMVersions(), [compiler]);
 
   return {
     contractABI,

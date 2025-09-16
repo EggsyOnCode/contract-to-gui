@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { WalletManager } from '../utils/wallet';
 import { WalletState } from '../types';
 
@@ -9,7 +9,7 @@ export const useWallet = () => {
   const [walletManager] = useState(() => new WalletManager());
   const [isConnecting, setIsConnecting] = useState(false);
 
-  const connectWallet = async () => {
+  const connectWallet = useCallback(async () => {
     setIsConnecting(true);
     try {
       const state = await walletManager.connectWallet();
@@ -20,18 +20,18 @@ export const useWallet = () => {
     } finally {
       setIsConnecting(false);
     }
-  };
+  }, [walletManager]);
 
-  const disconnectWallet = async () => {
+  const disconnectWallet = useCallback(async () => {
     try {
       await walletManager.disconnectWallet();
       setWalletState({ isConnected: false });
     } catch (error) {
       console.error('Failed to disconnect wallet:', error);
     }
-  };
+  }, [walletManager]);
 
-  const switchNetwork = async (chainId: number) => {
+  const switchNetwork = useCallback(async (chainId: number) => {
     try {
       await walletManager.switchNetwork(chainId);
       const state = walletManager.getWalletState();
@@ -40,7 +40,7 @@ export const useWallet = () => {
       console.error('Failed to switch network:', error);
       alert(error instanceof Error ? error.message : 'Failed to switch network');
     }
-  };
+  }, [walletManager]);
 
   useEffect(() => {
     // Check if wallet is already connected on page load

@@ -1,4 +1,4 @@
-import { Contract, BrowserProvider, JsonRpcSigner } from '@armchain-ethersv6/ethers';
+import { Contract, BrowserProvider, JsonRpcSigner, ContractFactory } from '@armchain-ethersv6/ethers';
 import { ContractABI, ContractCallResult, ContractFunction } from '../types';
 
 export class ContractInteraction {
@@ -22,11 +22,14 @@ export class ContractInteraction {
           return;
         }
 
-        const factory = new Contract(contractABI.contractName, contractABI.abi, this.signer);
+        // Create ContractFactory with bytecode and ABI
+        const factory = new ContractFactory(contractABI.abi, contractABI.bytecode, this.signer);
+        
+        // Deploy the contract with constructor arguments
         const contract = await factory.deploy(...constructorArgs);
         await contract.waitForDeployment();
 
-        this.contract = contract;
+        this.contract = contract as Contract;
         const address = await contract.getAddress();
 
         resolve({
