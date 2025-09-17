@@ -1,13 +1,15 @@
 import { useState, useCallback } from 'react';
 import { ContractCompiler } from '../utils/compiler';
 import { ContractInteraction } from '../utils/contractInteraction';
-import { ContractABI, CompilerSettings, ContractCallResult } from '../types';
+import { ContractABI, CompilerSettings, ContractCallResult, ContractFunction } from '../types';
 
 export const useContract = () => {
   const [contractABI, setContractABI] = useState<ContractABI | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
   const [compilationError, setCompilationError] = useState<string | null>(null);
   const [contractInteraction, setContractInteraction] = useState<ContractInteraction | null>(null);
+  const [isLoadingDeployed, setIsLoadingDeployed] = useState(false);
+  const [deployedContractError, setDeployedContractError] = useState<string | null>(null);
   const [compiler] = useState(() => new ContractCompiler());
 
   const compileContract = useCallback(async (
@@ -30,6 +32,31 @@ export const useContract = () => {
     }
   }, [compiler]);
 
+  const loadDeployedContract = useCallback(async (address: string, abi: any[]) => {
+    setIsLoadingDeployed(true);
+    setDeployedContractError(null);
+    
+    try {
+      const interaction = new ContractInteraction();
+      await interaction.setDeployedContractAddress(address, abi);
+      setContractInteraction(interaction);
+      
+      // Create a mock ContractABI object for consistency
+      const mockContractABI: ContractABI = {
+        abi,
+        bytecode: '', // Not needed for deployed contracts
+        contractName: 'Deployed Contract',
+      };
+      setContractABI(mockContractABI);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load deployed contract';
+      setDeployedContractError(errorMessage);
+      console.error('Deployed contract error:', error);
+    } finally {
+      setIsLoadingDeployed(false);
+    }
+  }, []);
+
   const deployContract = useCallback(async (constructorArgs: any[] = []): Promise<ContractCallResult> => {
     if (!contractABI || !contractInteraction) {
       return {
@@ -49,7 +76,7 @@ export const useContract = () => {
     if (!contractInteraction) {
       return {
         success: false,
-        error: 'Wallet not connected',
+        error: 'Contract not loaded',
       };
     }
 
@@ -63,12 +90,23 @@ export const useContract = () => {
   }, [contractABI, contractInteraction]);
 
   const initializeContractInteraction = useCallback((provider: any, signer: any) => {
-    const interaction = new ContractInteraction(provider, signer);
+    const interaction = new ContractInteraction();
     setContractInteraction(interaction);
   }, []);
 
   const getAvailableSolcVersions = useCallback(() => compiler.getAvailableSolcVersions(), [compiler]);
   const getAvailableEVMVersions = useCallback(() => compiler.getAvailableEVMVersions(), [compiler]);
+
+  // New functions for deployed contracts
+  const getReadFunctions = useCallback((): ContractFunction[] => {
+    if (!contractABI || !contractInteraction) return [];
+    return contractInteraction.getReadFunctionsFromABI(contractABI.abi);
+  }, [contractABI, contractInteraction]);
+
+  const getWriteFunctions = useCallback((): ContractFunction[] => {
+    if (!contractABI || !contractInteraction) return [];
+    return contractInteraction.getWriteFunctionsFromABI(contractABI.abi);
+  }, [contractABI, contractInteraction]);
 
   return {
     contractABI,
@@ -81,5 +119,11 @@ export const useContract = () => {
     initializeContractInteraction,
     getAvailableSolcVersions,
     getAvailableEVMVersions,
+    // New functions for deployed contracts
+    loadDeployedContract,
+    isLoadingDeployed,
+    deployedContractError,
+    getReadFunctions,
+    getWriteFunctions,
   };
 };

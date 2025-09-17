@@ -54,6 +54,14 @@ private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; sign
   return { provider, signer };
 }
 
+  // New method to create a read-only provider for deployed contracts
+  private async getReadOnlyProvider(): Promise<BrowserProvider> {
+    if (!window.ethereum) {
+      throw new Error('No Ethereum provider found. Please install a wallet like MetaMask.');
+    }
+    return new ethers.BrowserProvider(window.ethereum);
+  }
+
   deployContract(contractABI: ContractABI, constructorArgs: any[] = []): Promise<ContractCallResult> {
     return new Promise(async (resolve) => {
       try {
@@ -106,6 +114,20 @@ private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; sign
     this.contract = new Contract(address, contractABI.abi, this.signer);
   }
 
+  // New method to set contract address for read-only operations
+  setDeployedContractAddress(address: string, abi: any[]): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const provider = await this.getReadOnlyProvider();
+        this.contract = new Contract(address, abi, provider);
+        this.provider = provider;
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
   async callFunction(
     functionName: string,
     args: any[] = [],
@@ -121,16 +143,6 @@ private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; sign
           return;
         }
 
-        // Ensure wallet is still connected
-        const wallet = await this.ensureWalletConnected();
-        if (!wallet) {
-          resolve({
-            success: false,
-            error: 'Failed to connect wallet',
-          });
-          return;
-        }
-
         const functionABI = this.contract.interface.getFunction(functionName);
         if (!functionABI) {
           resolve({
@@ -142,10 +154,19 @@ private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; sign
 
         let result;
         if (functionABI.stateMutability === 'view' || functionABI.stateMutability === 'pure') {
-          // Read function
+          // Read function - can work without wallet connection
           result = await this.contract[functionName](...args);
         } else {
-          // Write function
+          // Write function - requires wallet connection
+          const wallet = await this.ensureWalletConnected();
+          if (!wallet) {
+            resolve({
+              success: false,
+              error: 'Wallet connection required for write operations',
+            });
+            return;
+          }
+
           const tx = await this.contract[functionName](...args, {
             value: value ? value : undefined,
           });
@@ -184,6 +205,25 @@ private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; sign
 
   getWriteFunctions(contractABI: ContractABI): ContractFunction[] {
     return this.getContractFunctions(contractABI).filter(
+      (func) => func.stateMutability === 'nonpayable' || func.stateMutability === 'payable'
+    );
+  }
+
+  // New method to get functions from ABI array (for deployed contracts)
+  getContractFunctionsFromABI(abi: any[]): ContractFunction[] {
+    return abi.filter(
+      (item): item is ContractFunction => item.type === 'function'
+    );
+  }
+
+  getReadFunctionsFromABI(abi: any[]): ContractFunction[] {
+    return this.getContractFunctionsFromABI(abi).filter(
+      (func) => func.stateMutability === 'view' || func.stateMutability === 'pure'
+    );
+  }
+
+  getWriteFunctionsFromABI(abi: any[]): ContractFunction[] {
+    return this.getContractFunctionsFromABI(abi).filter(
       (func) => func.stateMutability === 'nonpayable' || func.stateMutability === 'payable'
     );
   }

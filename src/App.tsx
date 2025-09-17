@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ContractUpload } from './components/ContractUpload';
+import { DeployedContractReader } from './components/DeployedContractReader';
 import { CompilerSettingsComponent } from './components/CompilerSettings';
 import { WalletConnector } from './components/WalletConnector';
 import { ContractDeployer } from './components/ContractDeployer';
@@ -12,6 +13,7 @@ import './App.css';
 function App() {
   const [sourceCode, setSourceCode] = useState<string>('');
   const [contractName, setContractName] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'upload' | 'deployed'>('upload');
   const [compilerSettings, setCompilerSettings] = useState<CompilerSettings>({
     evmVersion: 'shanghai',
     solcVersion: '0.8.30',
@@ -37,6 +39,11 @@ function App() {
     initializeContractInteraction,
     getAvailableSolcVersions,
     getAvailableEVMVersions,
+    loadDeployedContract,
+    isLoadingDeployed,
+    deployedContractError,
+    getReadFunctions,
+    getWriteFunctions,
   } = useContract();
 
   // Initialize contract interaction when wallet connects
@@ -51,6 +58,7 @@ function App() {
     // Extract contract name from filename (remove .sol extension)
     const name = filename.replace('.sol', '');
     setContractName(name);
+    setActiveTab('upload');
   };
 
   const handleCompile = async () => {
@@ -62,28 +70,15 @@ function App() {
     await compileContract(sourceCode, contractName, compilerSettings);
   };
 
+  const handleLoadDeployedContract = async (address: string, abi: any[]) => {
+    await loadDeployedContract(address, abi);
+    setActiveTab('deployed');
+  };
+
   const getConstructorInputs = (): any[] => {
     if (!contractABI) return [];
     const constructor = contractABI.abi.find(item => item.type === 'constructor');
     return constructor?.inputs || [];
-  };
-
-  const getReadFunctions = (): ContractFunction[] => {
-    if (!contractABI) return [];
-    return contractABI.abi.filter(
-      (item): item is ContractFunction => 
-        item.type === 'function' && 
-        (item.stateMutability === 'view' || item.stateMutability === 'pure')
-    );
-  };
-
-  const getWriteFunctions = (): ContractFunction[] => {
-    if (!contractABI) return [];
-    return contractABI.abi.filter(
-      (item): item is ContractFunction => 
-        item.type === 'function' && 
-        (item.stateMutability === 'nonpayable' || item.stateMutability === 'payable')
-    );
   };
 
   return (
@@ -95,32 +90,65 @@ function App() {
 
       <div className="app-content">
         <div className="left-panel">
-          <ContractUpload onFileUpload={handleFileUpload} />
-          
-          {sourceCode && (
-            <CompilerSettingsComponent
-              settings={compilerSettings}
-              onSettingsChange={setCompilerSettings}
-              availableSolcVersions={getAvailableSolcVersions()}
-              availableEVMVersions={getAvailableEVMVersions()}
+          <div className="tab-container">
+            <button 
+              className={`tab-button ${activeTab === 'upload' ? 'active' : ''}`}
+              onClick={() => setActiveTab('upload')}
+            >
+              Upload & Compile
+            </button>
+            <button 
+              className={`tab-button ${activeTab === 'deployed' ? 'active' : ''}`}
+              onClick={() => setActiveTab('deployed')}
+            >
+              Read Deployed
+            </button>
+          </div>
+
+          {activeTab === 'upload' && (
+            <>
+              <ContractUpload onFileUpload={handleFileUpload} />
+              
+              {sourceCode && (
+                <CompilerSettingsComponent
+                  settings={compilerSettings}
+                  onSettingsChange={setCompilerSettings}
+                  availableSolcVersions={getAvailableSolcVersions()}
+                  availableEVMVersions={getAvailableEVMVersions()}
+                />
+              )}
+
+              {sourceCode && (
+                <div className="compile-section">
+                  <button 
+                    onClick={handleCompile} 
+                    disabled={isCompiling}
+                    className="compile-button"
+                  >
+                    {isCompiling ? 'Compiling...' : 'Compile Contract'}
+                  </button>
+                  {compilationError && (
+                    <div className="compilation-error">
+                      <h4>Compilation Error:</h4>
+                      <pre>{compilationError}</pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'deployed' && (
+            <DeployedContractReader
+              onLoadContract={handleLoadDeployedContract}
+              isLoading={isLoadingDeployed}
             />
           )}
 
-          {sourceCode && (
-            <div className="compile-section">
-              <button 
-                onClick={handleCompile} 
-                disabled={isCompiling}
-                className="compile-button"
-              >
-                {isCompiling ? 'Compiling...' : 'Compile Contract'}
-              </button>
-              {compilationError && (
-                <div className="compilation-error">
-                  <h4>Compilation Error:</h4>
-                  <pre>{compilationError}</pre>
-                </div>
-              )}
+          {deployedContractError && (
+            <div className="deployed-contract-error">
+              <h4>Error Loading Contract:</h4>
+              <pre>{deployedContractError}</pre>
             </div>
           )}
 
@@ -133,40 +161,44 @@ function App() {
         </div>
 
         <div className="right-panel">
-          {contractABI && walletState.isConnected && (
+          {contractABI && (
             <>
-              <ContractDeployer
-                onDeploy={deployContract}
-                constructorInputs={getConstructorInputs()}
-                isDeploying={false}
-              />
+              {activeTab === 'upload' && walletState.isConnected && (
+                <ContractDeployer
+                  onDeploy={deployContract}
+                  constructorInputs={getConstructorInputs()}
+                  isDeploying={false}
+                />
+              )}
 
-              <div className="contract-address-section">
-                <h3>Set Contract Address</h3>
-                <div className="address-input-group">
-                  <input
-                    type="text"
-                    placeholder="Enter deployed contract address"
-                    onBlur={(e) => {
-                      if (e.target.value) {
-                        setContractAddress(e.target.value);
-                      }
-                    }}
-                    className="address-input"
-                  />
-                  <button 
-                    onClick={() => {
-                      const input = document.querySelector('.address-input') as HTMLInputElement;
-                      if (input?.value) {
-                        setContractAddress(input.value);
-                      }
-                    }}
-                    className="set-address-button"
-                  >
-                    Set Address
-                  </button>
+              {activeTab === 'upload' && walletState.isConnected && (
+                <div className="contract-address-section">
+                  <h3>Set Contract Address</h3>
+                  <div className="address-input-group">
+                    <input
+                      type="text"
+                      placeholder="Enter deployed contract address"
+                      onBlur={(e) => {
+                        if (e.target.value) {
+                          setContractAddress(e.target.value);
+                        }
+                      }}
+                      className="address-input"
+                    />
+                    <button 
+                      onClick={() => {
+                        const input = document.querySelector('.address-input') as HTMLInputElement;
+                        if (input?.value) {
+                          setContractAddress(input.value);
+                        }
+                      }}
+                      className="set-address-button"
+                    >
+                      Set Address
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <ContractFunctions
                 functions={getReadFunctions()}
@@ -174,25 +206,34 @@ function App() {
                 isReadOnly={true}
               />
 
-              <ContractFunctions
-                functions={getWriteFunctions()}
-                onCallFunction={callFunction}
-                isReadOnly={false}
-              />
-            </>
-          )}
+              {walletState.isConnected && (
+                <ContractFunctions
+                  functions={getWriteFunctions()}
+                  onCallFunction={callFunction}
+                  isReadOnly={false}
+                />
+              )}
 
-          {contractABI && !walletState.isConnected && (
-            <div className="wallet-required">
-              <h3>Wallet Required</h3>
-              <p>Please connect your wallet to interact with the contract</p>
-            </div>
+              {!walletState.isConnected && activeTab === 'upload' && (
+                <div className="wallet-required">
+                  <h3>Wallet Required</h3>
+                  <p>Please connect your wallet to deploy or write to contracts</p>
+                </div>
+              )}
+
+              {!walletState.isConnected && activeTab === 'deployed' && (
+                <div className="wallet-info">
+                  <h3>Read-Only Mode</h3>
+                  <p>You can read contract state without connecting a wallet. Connect your wallet to enable write operations.</p>
+                </div>
+              )}
+            </>
           )}
 
           {!contractABI && (
             <div className="no-contract">
               <h3>No Contract Loaded</h3>
-              <p>Upload and compile a smart contract to get started</p>
+              <p>Upload and compile a smart contract or load a deployed contract to get started</p>
             </div>
           )}
         </div>
