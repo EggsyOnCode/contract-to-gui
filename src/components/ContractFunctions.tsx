@@ -16,6 +16,14 @@ export const ContractFunctions: React.FC<ContractFunctionsProps> = ({
   const [callResults, setCallResults] = useState<Record<string, ContractCallResult>>({});
   const [isCalling, setIsCalling] = useState<Record<string, boolean>>({});
 
+  // Custom serializer for BigInt values
+  const serializeBigInt = (key: string, value: any) => {
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    return value;
+  };
+
   const getInputType = (input: any) => {
     switch (input.type) {
       case 'bool':
@@ -168,7 +176,7 @@ export const ContractFunctions: React.FC<ContractFunctionsProps> = ({
                 <div className={`call-result ${callResults[func.name].success ? 'success' : 'error'}`}>
                   <h5>Result:</h5>
                   {callResults[func.name].success ? (
-                    <pre>{JSON.stringify(callResults[func.name].result, null, 2)}</pre>
+                    <pre>{JSON.stringify(callResults[func.name].result, serializeBigInt, 2)}</pre>
                   ) : (
                     <p className="error-message">{callResults[func.name].error}</p>
                   )}

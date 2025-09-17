@@ -10,12 +10,18 @@ export class WalletManager {
 
   async connectWallet(): Promise<WalletState> {
     try {
-      if (typeof window.ethereum === 'undefined') {
+      if (typeof window.wigwamEthereum === 'undefined') {
         throw new Error('No wallet detected. Please install MetaMask or another Web3 wallet.');
       }
 
-      this.provider = new BrowserProvider(window.ethereum);
-      await this.provider.send('eth_requestAccounts', []);
+      this.provider = new BrowserProvider(window.wigwamEthereum);
+      const accounts = await window.wigwamEthereum.request({
+        method: 'eth_requestAccounts',
+      });
+
+      console.log(accounts);
+
+      // await this.provider.send('eth_requestAccounts', []);
       
       this.signer = await this.provider.getSigner();
       const address = await this.signer.getAddress();

@@ -1,4 +1,4 @@
-import { Contract, BrowserProvider, JsonRpcSigner, ContractFactory } from '@armchain-ethersv6/ethers';
+import { Contract, BrowserProvider, JsonRpcSigner, ContractFactory, ethers } from '@armchain-ethersv6/ethers';
 import { ContractABI, ContractCallResult, ContractFunction } from '../types';
 
 export class ContractInteraction {
@@ -6,27 +6,76 @@ export class ContractInteraction {
   private provider: BrowserProvider | null = null;
   private signer: JsonRpcSigner | null = null;
 
-  constructor(provider: BrowserProvider | null, signer: JsonRpcSigner | null) {
-    this.provider = provider;
-    this.signer = signer;
+  constructor() {
+    // No longer need provider/signer parameters since we'll use window.ethereum
   }
+
+private async ensureWalletConnected(): Promise<{ provider: BrowserProvider; signer: JsonRpcSigner } | null> {
+  if (!window.ethereum) {
+    throw new Error('No Ethereum provider found. Please install a wallet like MetaMask.');
+  }
+
+  // Check if already connected
+  let accounts = await window.ethereum.request({ method: 'eth_accounts' });
+  console.log('accounts', accounts);
+  
+  
+  if (accounts.length === 0) {
+    // Try different connection methods
+    try {
+      // Method 1: Standard eth_requestAccounts
+      accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    } catch (error) {
+      try {
+        // Method 2: Wallet permissions (EIP-2255)
+        await window.ethereum.request({ 
+          method: 'wallet_requestPermissions',
+          params: [{ eth_accounts: {} }]
+        });
+        // Re-check accounts after permission
+        accounts = await window.ethereum.request({ method: 'eth_accounts' });
+      } catch (permError) {
+        throw new Error('User rejected connection request or wallet is locked');
+      }
+    }
+  }
+
+  if (accounts.length === 0) {
+    throw new Error('No accounts available. Please unlock your wallet and try again.');
+  }
+
+  // Create provider and signer from window.ethereum
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  const signer = await provider.getSigner();
+
+  this.provider = provider;
+  this.signer = signer;
+
+  return { provider, signer };
+}
 
   deployContract(contractABI: ContractABI, constructorArgs: any[] = []): Promise<ContractCallResult> {
     return new Promise(async (resolve) => {
       try {
-        if (!this.signer) {
+        const wallet = await this.ensureWalletConnected();
+        if (!wallet) {
           resolve({
             success: false,
-            error: 'Wallet not connected',
+            error: 'Failed to connect wallet',
           });
           return;
         }
 
+        const { signer } = wallet;
+
         // Create ContractFactory with bytecode and ABI
-        const factory = new ContractFactory(contractABI.abi, contractABI.bytecode, this.signer);
+        const factory = new ContractFactory(contractABI.abi, contractABI.bytecode, signer);
         
         // Deploy the contract with constructor arguments
+        // This will trigger a wallet popup for transaction confirmation
         const contract = await factory.deploy(...constructorArgs);
+        
+        // Wait for the deployment transaction to be mined
         await contract.waitForDeployment();
 
         this.contract = contract as Contract;
@@ -40,6 +89,7 @@ export class ContractInteraction {
           },
         });
       } catch (error) {
+        console.error('Deployment error:', error);
         resolve({
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
@@ -49,11 +99,11 @@ export class ContractInteraction {
   }
 
   setContractAddress(address: string, contractABI: ContractABI): void {
-    if (!this.provider) {
-      throw new Error('Provider not available');
+    if (!this.provider || !this.signer) {
+      throw new Error('Wallet not connected. Please connect your wallet first.');
     }
 
-    this.contract = new Contract(address, contractABI.abi, this.signer || this.provider);
+    this.contract = new Contract(address, contractABI.abi, this.signer);
   }
 
   async callFunction(
@@ -67,6 +117,16 @@ export class ContractInteraction {
           resolve({
             success: false,
             error: 'Contract not deployed or address not set',
+          });
+          return;
+        }
+
+        // Ensure wallet is still connected
+        const wallet = await this.ensureWalletConnected();
+        if (!wallet) {
+          resolve({
+            success: false,
+            error: 'Failed to connect wallet',
           });
           return;
         }
