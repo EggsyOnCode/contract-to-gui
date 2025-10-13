@@ -5,6 +5,9 @@ export class ContractCompiler {
   private solc: any | null = null;
   private isLoading: boolean = false;
   private loadPromise: Promise<void> | null = null;
+  private cachedSolcBuilds: any[] | null = null;
+  private cachedAllVersions: string[] | null = null;
+  private cachedStableVersions: string[] | null = null;
 
   constructor() {
     // Don't load immediately, wait for first compilation
@@ -60,6 +63,8 @@ export class ContractCompiler {
         throw new Error('Compiler not loaded');
       }
 
+      let runs = settings.optimization ? 200 : 0;
+
       const input = {
         language: 'Solidity',
         sources: {
@@ -69,17 +74,25 @@ export class ContractCompiler {
         },
         settings: {
           outputSelection: {
-            '*': {
-              '*': ['*'],
-            },
+          "*": {
+                "*": [
+                  "abi",
+                  "evm.bytecode.object",        // creation code (for deployment)
+                  "evm.deployedBytecode.object" // runtime code (for verification)
+                ],
+              },
           },
+          viaIR: false,
           evmVersion: settings.evmVersion,
           optimizer: {
             enabled: settings.optimization,
-            runs: settings.runs || 200,
+            runs: runs,
           },
         },
       };
+
+      console.log("inputs", input);
+      
 
       const output = await this.solc.compile(input);
       console.log('Compilation output:', output);
@@ -108,6 +121,45 @@ export class ContractCompiler {
     }
   }
 
+  // Remote versions (solc-bin). Returns cached when available.
+  async fetchSolcVersions(): Promise<{ builds: any[]; allVersions: string[]; stableVersions: string[] }> {
+    if (this.cachedSolcBuilds && this.cachedAllVersions && this.cachedStableVersions) {
+      return {
+        builds: this.cachedSolcBuilds,
+        allVersions: this.cachedAllVersions,
+        stableVersions: this.cachedStableVersions,
+      };
+    }
+
+    const response = await fetch('https://raw.githubusercontent.com/ethereum/solc-bin/gh-pages/bin/list.json');
+    if (!response.ok) {
+      throw new Error(`Failed to fetch solc versions: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+
+    const builds: any[] = Array.isArray(data?.builds) ? data.builds : [];
+
+    // e.g., build.longVersion -> "0.8.30+commit.abc123" → display as `v0.8.30+commit.abc123`
+    const allVersions: string[] = [];
+    const stableVersions: string[] = [];
+
+    builds.forEach((build: any) => {
+      const version = `v${build.longVersion}`;
+      // unshift to keep latest first
+      allVersions.unshift(version);
+      if (!build.prerelease) {
+        stableVersions.unshift(version);
+      }
+    });
+
+    this.cachedSolcBuilds = builds;
+    this.cachedAllVersions = allVersions;
+    this.cachedStableVersions = stableVersions;
+
+    return { builds, allVersions, stableVersions };
+  }
+
+  // Backward-compatible static list (fallback)
   getAvailableSolcVersions(): string[] {
     return [
       '0.8.30',

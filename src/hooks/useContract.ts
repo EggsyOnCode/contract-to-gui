@@ -97,7 +97,12 @@ export const useContract = () => {
   const getAvailableSolcVersions = useCallback(() => compiler.getAvailableSolcVersions(), [compiler]);
   const getAvailableEVMVersions = useCallback(() => compiler.getAvailableEVMVersions(), [compiler]);
 
-  // New functions for deployed contracts
+  // New: fetch versions from solc-bin list.json (cached in compiler)
+  const fetchSolcVersions = useCallback(async () => {
+    return await compiler.fetchSolcVersions();
+  }, [compiler]);
+
+  // Functions for deployed contracts
   const getReadFunctions = useCallback((): ContractFunction[] => {
     if (!contractABI || !contractInteraction) return [];
     return contractInteraction.getReadFunctionsFromABI(contractABI.abi);
@@ -119,7 +124,8 @@ export const useContract = () => {
     initializeContractInteraction,
     getAvailableSolcVersions,
     getAvailableEVMVersions,
-    // New functions for deployed contracts
+    fetchSolcVersions,
+    // Restored functions
     loadDeployedContract,
     isLoadingDeployed,
     deployedContractError,

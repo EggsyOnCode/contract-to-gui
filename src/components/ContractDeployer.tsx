@@ -5,12 +5,14 @@ interface ContractDeployerProps {
   onDeploy: (constructorArgs: any[]) => Promise<ContractCallResult>;
   constructorInputs: any[];
   isDeploying: boolean;
+  onConstructorArgsChange?: (args: any[]) => void;
 }
 
 export const ContractDeployer: React.FC<ContractDeployerProps> = ({
   onDeploy,
   constructorInputs,
   isDeploying,
+  onConstructorArgsChange,
 }) => {
   const [constructorArgs, setConstructorArgs] = useState<any[]>([]);
   const [deployResult, setDeployResult] = useState<ContractCallResult | null>(null);
@@ -19,6 +21,7 @@ export const ContractDeployer: React.FC<ContractDeployerProps> = ({
     const newArgs = [...constructorArgs];
     newArgs[index] = value;
     setConstructorArgs(newArgs);
+    onConstructorArgsChange?.(newArgs);
   };
 
   const handleDeploy = async () => {

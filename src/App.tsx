@@ -5,6 +5,7 @@ import { CompilerSettingsComponent } from './components/CompilerSettings';
 import { WalletConnector } from './components/WalletConnector';
 import { ContractDeployer } from './components/ContractDeployer';
 import { ContractFunctions } from './components/ContractFunctions';
+import { ContractArtifacts } from './components/ContractArtifacts';
 import { useWallet } from './hooks/useWallet';
 import { useContract } from './hooks/useContract';
 import { CompilerSettings, ContractFunction } from './types';
@@ -14,6 +15,7 @@ function App() {
   const [sourceCode, setSourceCode] = useState<string>('');
   const [contractName, setContractName] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'upload' | 'deployed'>('upload');
+  const [constructorArgs, setConstructorArgs] = useState<any[]>([]);
   const [compilerSettings, setCompilerSettings] = useState<CompilerSettings>({
     evmVersion: 'shanghai',
     solcVersion: '0.8.30',
@@ -44,6 +46,7 @@ function App() {
     deployedContractError,
     getReadFunctions,
     getWriteFunctions,
+    fetchSolcVersions,
   } = useContract();
 
   // Initialize contract interaction when wallet connects
@@ -75,11 +78,30 @@ function App() {
     setActiveTab('deployed');
   };
 
+  const handleConstructorArgsChange = (args: any[]) => {
+    setConstructorArgs(args);
+  };
+
   const getConstructorInputs = (): any[] => {
     if (!contractABI) return [];
     const constructor = contractABI.abi.find(item => item.type === 'constructor');
     return constructor?.inputs || [];
   };
+
+  // load on mount and feed to settings
+  const [allCompilerVersions, setAllCompilerVersions] = useState<string[]>([]);
+  const [releasesCompilerVersions, setReleasesCompilerVersions] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const { builds, allVersions, stableVersions } = await fetchSolcVersions();
+      // Optional: if you specifically want to reconstruct like your snippet:
+      // const all: string[] = []; const stable: string[] = [];
+      // builds.forEach(build => { const version = `v${build.longVersion}`; all.unshift(version); if (!build.prerelease) stable.unshift(version); });
+      setAllCompilerVersions(allVersions);
+      setReleasesCompilerVersions(stableVersions);
+    })();
+  }, [fetchSolcVersions]);
 
   return (
     <div className="app">
@@ -113,7 +135,7 @@ function App() {
                 <CompilerSettingsComponent
                   settings={compilerSettings}
                   onSettingsChange={setCompilerSettings}
-                  availableSolcVersions={getAvailableSolcVersions()}
+                  availableSolcVersions={allCompilerVersions}
                   availableEVMVersions={getAvailableEVMVersions()}
                 />
               )}
@@ -163,11 +185,18 @@ function App() {
         <div className="right-panel">
           {contractABI && (
             <>
+              {/* Contract Artifacts */}
+              <ContractArtifacts 
+                contractABI={contractABI}
+                constructorArgs={constructorArgs}
+              />
+
               {activeTab === 'upload' && walletState.isConnected && (
                 <ContractDeployer
                   onDeploy={deployContract}
                   constructorInputs={getConstructorInputs()}
                   isDeploying={false}
+                  onConstructorArgsChange={handleConstructorArgsChange}
                 />
               )}
 
